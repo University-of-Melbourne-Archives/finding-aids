@@ -194,8 +194,7 @@ We estimate tokens using the rule of thumb: **1 token ≈ 4 characters**.
 **Result:**
 * The total cost to process this entire 3-page document is approximately **$0.0027** (about 0.27 US cents).
 * Based on this sample, processing a **100-page document** would cost approximately **$0.091** (about 9.1 US cents).
-* ⚠️ Important Caveat
-This estimate is based only on the average from the 3-page sample. Please do cost estimation based on your real cases.
+* ⚠️ **Important Caveat**. This estimate is based only on the average from the 3-page sample. Please do cost estimation based on your real cases.
 
 ---
 #### Cost-Saving & Research Credits
