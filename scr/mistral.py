@@ -35,61 +35,56 @@ from mistralai import Mistral
 
 # --------------------- Prompt (your original) ---------------------
 PROMPT_JSON_FIRST = r"""
-You are converting a typed archival finding aid (1960s–1990s) into a hierarchical JSON.
+You are extracting data from a typed archival finding aid into JSON format.
 
-SCOPE
-- Ignore the "context area" at the front (repository banners, page headers like “Miscellaneous Letters”, cover matter).
-- Parse ONLY the hierarchical record list (series/groups and their items).
-- Capture handwritten/digital annotations that appear in the record list.
+# CORE TASK
+Extract each archival record with its metadata, preserving the exact formatting.
 
-DEFINITIONS & STRUCTURE
-- A Series is the parent-level heading above a block of items (often a person/firm name). When a new parent heading appears, that becomes the current series; following items inherit it until the next parent heading.
-- Page/collection headers (e.g., “Miscellaneous Letters”) are NOT series. Put such page-level context in "document_notes" only.
-- “Unit n” lines (e.g., Unit 1, Unit 22) set the current unit; all subsequent items inherit that unit until another “Unit n” appears.
-- Finding_Aid_Reference is the original left-margin numbering EXACTLY AS PRINTED (e.g., "1.", "2.", "5.", "5.(1)", "5.(2)", "5/1").
-  - If a sub-item appears only as "(1)" under a top-level "5.", emit "5.(1)" (or "5/1" if that page uses slash style). Preserve whatever style the page uses.
-  - Do NOT normalize to "5.1" or strip trailing dots/parentheses/slashes.
-- Title is the item’s first sentence/label (e.g., "Letter.", "Bond.", "Mortgage.", "Grant by Purchase."). Do NOT include the series/heading itself in Title.
-- Text is the FULL item content as one string, INCLUDING the Title, the Dates line, any “x sheet(s).”/extent lines (even if OCR-spaced oddly), and any "Note:" lines. Do NOT include explicit "Unit n" lines in Text.
-- Dates is the verbatim date string from the item (use the clearest/last explicit date line). Do not infer or reformat dates.
-- annotations are item-level notes (e.g., "Note: …"). These must ALSO be present inline within Text.
+# KEY RULES
 
-RULES
-- Preserve punctuation and case exactly.
-- Remove line breaks unless they indicate a new row/item; keep whitespace minimal (single spaces between words).
-- If a field is missing, use "" (empty string), not null.
-- Word-level OCR uncertainty:
-  - When ANY word/token is not confidently read, insert an inline tag immediately after the best-guess word in this exact form:
-    <best_guess>[OCR uncertain <raw_or_alt>, uncertain level NN/100]
-    - Example: "return to Melbourne[OCR uncertain Melboume, uncertain level 63/100]".
-  - Use NN = your 0–100 confidence estimate (higher = more confident). Tag each uncertain word once.
-  - Place the bracket before trailing punctuation if present (e.g., "Bond[OCR uncertain Boud, uncertain level 58/100].")
-- Do not infer or reformat dates; keep as seen (e.g., "c.1900–1910").
-- Do not normalize or pad numbering (keep "1/1", "1/1/1", "5.(1)" verbatim).
-- Never return prose. ALWAYS return valid JSON only.
-- If these pages contain no items, return exactly:
-  {"series": [], "unassigned_items": [], "document_notes": "no items on these pages"}
+1. FINDING AID REFERENCE - Copy the left-margin number EXACTLY as shown:
+   - If it shows "1" write "1" (no dot)
+   - If it shows "1." write "1." (with dot)
+   - If it shows "5.(1)" write "5.(1)" (exact format)
+   Keep whatever punctuation you see.
 
-OUTPUT (return ONLY JSON, no prose):
+2. SERIES - The organizational heading (usually a person or company name):
+   - Series carry forward: once you see "ADAMS, John" all following items 
+     belong to this series until you see a new heading
+   - Series headings are usually in caps or underlined
+   - Example: "A'BECKETT, Thomas Turner" is a series
+
+3. UNIT - Container numbers like "Unit 1" or "Unit 22":
+   - Units also carry forward to all following items
+   - Always write as "Unit N" not just the number
+
+4. TEXT - Include everything: title, dates, descriptions, notes
+   - Combine multi-line content into one string
+   - Mark uncertain words: word[OCR uncertain]
+
+# SIMPLE EXAMPLE
+Input shows:
+   Unit 1
+   ADAMS, John
+   1. Bond. 17 Dec 1850. 2 sheets.
+   2. Letter. To Melbourne. 1852.
+
+Output:
 {
-  "series": [
-    {
-      "series": "<parent heading text or ''>",
-      "items": [
-        {
-          "unit": "<Unit n or ''>",
-          "finding_aid_reference": "<left margin number as printed>",
-          "title": "<first-sentence label or ''>",
-          "text": "<FULL item text (includes title + dates + sheets + notes)>",
-          "dates": "<verbatim date or ''>",
-          "annotations": ["<item-level note>", "..."]
-        }
-      ]
-    }
-  ],
-  "unassigned_items": [],
-  "document_notes": "<page/collection headers or OCR caveats; NOT series>"
+  "series": [{
+    "series": "ADAMS, John",
+    "items": [
+      {"unit": "Unit 1", "finding_aid_reference": "1", 
+       "title": "Bond", "text": "Bond. 17 Dec 1850. 2 sheets.",
+       "dates": "17 Dec 1850"},
+      {"unit": "Unit 1", "finding_aid_reference": "2",
+       "title": "Letter", "text": "Letter. To Melbourne. 1852.",
+       "dates": "1852"}
+    ]
+  }]
 }
+
+Process ALL items in the document. Return only JSON.
 """
 
 # --------------------- Config ---------------------
@@ -362,7 +357,7 @@ def main():
     p.add_argument("--out_xlsx", required=True, help="Path to save the flattened Excel file.")
     p.add_argument("--api_key", type=str, default="", help="API key for Mistral (falls back to MISTRAL_API_KEY).")
     p.add_argument("--model_name", type=str, default="pixtral-12b-latest", help="Mistral model (vision).")
-    p.add_argument("--temperature", type=float, default=0.3)
+    p.add_argument("--temperature", type=float, default=0.35)
     p.add_argument("--pages_per_chunk", type=int, default=5)
     p.add_argument("--pages", type=str, default=None, help="Optional page range N or N-M (1-based) to limit processing.")
 
