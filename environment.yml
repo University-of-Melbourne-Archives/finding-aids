@@ -1,4 +1,4 @@
-name: uma_genai
+name: finding-aids
 channels:
   - defaults
 dependencies:
