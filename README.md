@@ -1,15 +1,37 @@
-## 🚀 Usage: Gemini Model (`scr/gemini.py`)
+## 🚀 Usage: GenAI Finding Aids Pipeline (Gemini + OpenAI Support)
+This guide explains how to set up the environment, configure API keys, run the OCR pipeline, and post-process date ranges for finding aid PDFs.
 
-This section provides a step-by-step guide to setting up and running the `gemini.py` script to process your PDF finding aids.
+### Step 1: Create Your Conda Environment
 
-### Step 1: Get Your Google API Key
+We recommend using `conda` to manage your Python environment and dependencies.
 
+1.  **Create a new `conda` environment:**
+    From your terminal, create an environment named `finding-aids` (e.g., with Python 3.10).
+    ```bash
+    conda env create -f environment.yml
+    ```
+
+2.  **Activate the environment:**
+    ```bash
+    conda activate finding-aids
+    ```
+    (Your terminal prompt should now show `(finding-aids)`.)
+
+    
+### 🔑 Step 2: Obtain Your API Keys
+### 2.1 Google Gemini API Key
 1.  Go to **Google AI Studio** (https://aistudio.google.com/).
 2.  Sign in with your Google account and navigate to the **"Get API key"** section.
 3.  Create a new API key.
 4.  Copy this key. It is a long string of letters and numbers.
 
-### Step 2: Set Your API Key Environment Variable
+### 2.2 OpenAI API Key (GPT-4o, GPT-5.1, Mini Models)
+
+1. Visit: https://platform.openai.com
+2. Generate a new key
+3. Copy the key (starts with sk-...)
+
+### Step 3: Set Your API Key Environment Variable
 
 Instead of using a `.env` file, this method sets your API key permanently so it's available in all your terminal sessions.
 
@@ -25,7 +47,10 @@ Instead of using a `.env` file, this method sets your API key permanently so it'
 3.  **Add the key to the file.**
     Go to the very bottom of the file and add the following line, pasting your key inside the quotes:
     ```bash
+    # GEMINI GPT
     export GOOGLE_API_KEY='YOUR_API_KEY_GOES_HERE'
+    # OpenAI GPT
+    export OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
     ```
 
 4.  **Save and exit the editor.**
@@ -42,90 +67,83 @@ Instead of using a `.env` file, this method sets your API key permanently so it'
     ```
     Your API key will now be set automatically in every new terminal you open.
     
-   
-### Step 3: Create Your Conda Environment
 
-We recommend using `conda` to manage your Python environment and dependencies.
+## 🧠 Step 4: Run the OCR Pipeline (`src.main`)
 
-1.  **Create a new `conda` environment:**
-    From your terminal, create an environment named `finding-aids` (e.g., with Python 3.10).
-    ```bash
-    conda create -n finding-aids python=3.10
-    ```
+The main entrypoint is:
 
-2.  **Activate the environment:**
-    ```bash
-    conda activate finding-aids
-    ```
-    (Your terminal prompt should now show `(finding-aids)`.)
+```bash
+python -m src.main
+```
+### 4.1 Required Arguments
 
-3.  **Install dependencies:**
-    This script requires several Python libraries. Use `pip` to install them into your active `conda` environment.
-    ```bash
-    pip install google-generativeai pandas pypdf tqdm xlsxwriter
-    ```
+| Argument      | Description |
+|---------------|-------------|
+| `--pdf`       | Path to the PDF finding aid |
+| `--out_raw`   | Output folder for raw model responses |
+| `--out_json`  | Output folder for flattened JSON |
+| `--out_csv`   | Output folder for CSV |
+| `--out_xlsx`  | Output folder for XLSX |
+| `--out_log`   | Logs |
 
-### Step 4: Run the Script
+The script automatically creates directory structures like:
 
-Since your API key is now set permanently (from Step 2), you just need to make sure you are in your `conda` environment and then run the script.
+```bash
+output/<type>/<engine>/<model_tag>/<pdf_stem>/
+```
 
-1.  **Activate your environment (if not already active):**
-    ```bash
-    conda activate finding-aids
-    ```
-    (Your terminal prompt should show `(finding-aids)`.)
+### 4.2 Optional Arguments
 
-2.  **Run the script:**
-    You can run the script with a basic command or use optional flags to customize its behavior.
+| Argument           | Description |
+|--------------------|-------------|
+| `--engine`         | `{gemini, openai}` — default: `gemini` |
+| `--model_name`     | e.g., `models/gemini-2.5-flash`, `gpt-5.1`, `gpt-4o` |
+| `--pages_per_chunk`| Default: `5` |
+| `--pages`          | e.g. `"1-10"` to limit to page ranges |
+| `--temperature`    | Default: `0.3` — recommended for OCR accuracy |
+| `--max_retries`    | Default: `3` — retry count for API errors |
 
-    #### Command-Line Arguments
 
-    Here is a breakdown of all the available parameters for `gemini.py`:
 
-    * `--pdf "path/to/file.pdf"`
-        **(Required)** The full path to the input finding aid PDF you want to process.
-    * `--out_json "path/to/output.json"`
-        **(Required)** The full path where you want to save the hierarchical JSON file produced by the model.
-    * `--out_xlsx "path/to/output.xlsx"`
-        **(Required)** The full path where you want to save the final, flattened Excel file.
-    * `--model_name "model-id"`
-        **(Optional)** Lets you specify which Gemini model to use.
-        * **Default:** `models/gemini-2.5-flash`
-        * **To change:** You can use a different model, like `models/gemini-pro`, by adding the flag: `--model_name "models/gemini-pro"`
-    * `--temperature 0.5`
-        **(Optional)** Controls the "creativity" or randomness of the model's output.
-        * **Default:** `0.3`
-        * **Impact:** A lower value (e.g., `0.1`) makes the output more deterministic and consistent. A higher value (e.g., `0.7`) makes it more creative but also potentially less accurate. For this task, a low value is recommended.
-    * `--pages_per_chunk 5`
-        **(Optional)** The number of PDF pages to process in a single API call.
-        * **Default:** `5`
-        * **Impact:** A smaller number (e.g., `2`) uses less memory and is less likely to hit API token limits, but the overall run will be slower. A larger number (e.g., `10`) is faster but may fail if the chunk is too large.
-    * `--pages "N-M"`
-        **(Optional)** Processes only a specific range of pages.
-        * **Default:** `None` (processes the entire document).
-        * **Impact:** This is extremely useful for testing. You can run `--pages "5-10"` to process only pages 5 through 10, saving time and cost.
+###📌 Step 4.3 Examples
 
-    ---
-    #### 📝 Basic Example (processing the whole PDF with defaults):
+▶ Example: Gemini, full PDF
+```bash
+python -m src.main \
+  --pdf "/path/to/document.pdf" \
+  --out_raw "data/output/raw" \
+  --out_json "data/output/json" \
+  --out_csv "data/output/csv" \
+  --out_xlsx "data/output/xlsx" \
+  --out_log "data/output/logs" \
+  --engine gemini \
+  --model_name "models/gemini-2.5-flash"
+```
 
-    ```bash
-    python scr/gemini.py \
-        --pdf "path/to/your/document.pdf" \
-        --out_json "output/results.json" \
-        --out_xlsx "output/results.xlsx"
-    ```
+▶ Example: OpenAI GPT-5.1, pages 1–10 only
+```bash
+python -m src.main \
+  --pdf "/path/to/document.pdf" \
+  --out_raw "data/output/raw" \
+  --out_json "data/output/json" \
+  --out_csv "data/output/csv" \
+  --out_xlsx "data/output/xlsx" \
+  --out_log "data/output/logs" \
+  --engine openai \
+  --model_name "gpt-5.1" \
+  --pages "1-10"
+```
 
-    #### 🔬 Advanced Example (testing pages 5-10 with higher temperature):
+Example output paths
+```bash
+data/output/raw/openai/gpt-5_1/<pdf_stem>/
+data/output/json/openai/gpt-5_1/<pdf_stem>_gpt-5_1.json
+data/output/csv/openai/gpt-5_1/<pdf_stem>_gpt-5_1.csv
+data/output/xlsx/openai/gpt-5_1/<pdf_stem>_gpt-5_1.xlsx
+data/output/logs/openai/gpt-5_1/<pdf_stem>/
+```
 
-    ```bash
-    python scr/gemini.py \
-        --pdf "path/to/your/document.pdf" \
-        --out_json "output/results_pages_5-10.json" \
-        --out_xlsx "output/results_pages_5-10.xlsx" \
-        --pages "5-10" \
-        --temperature 0.5 \
-        --pages_per_chunk 2
-    ```
+
 ### Step 5: Post-Process Date Ranges (`postprocess_date_range.py`)
 
 After the AI has created the `results.xlsx` file, the `Dates` column contains raw text (e.g., "1910-1915" or "14-15 Oct 1839").
