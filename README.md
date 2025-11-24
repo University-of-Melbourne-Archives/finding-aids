@@ -73,6 +73,7 @@ Instead of using a `.env` file, this method sets your API key permanently so it'
 The main entrypoint is:
 
 ```bash
+cd finding-aids-llm
 python -m src.main
 ```
 ### 4.1 Required Arguments
@@ -144,21 +145,19 @@ data/output/logs/openai/gpt-5_1/<pdf_stem>/
 ```
 
 
-### Step 5: Post-Process Date Ranges (`postprocess_date_range.py`)
+### Step 5: 📦 Post-Processing: Hierarchy & Inheritance Pipeline
 
-After the AI has created the `results.xlsx` file, the `Dates` column contains raw text (e.g., "1910-1915" or "14-15 Oct 1839").
+After running the OCR pipeline (src.main) and generating your structured XLSX/CSV outputs, the next stage is post-processing to restore hierarchical context and normalize archival metadata.
 
-This script is a crucial second step that reads that Excel file, intelligently parses the raw date text, and adds six new columns for sortable start and end dates.
+This stage enriches the dataset with:
 
-**This script adds:**
-* `Start_Date`
-* `End_Date`
-* `Start_Date_Sortable`
-* `End_Date_Sortable`
-* `Start_Date_Complete`
-* `End_Date_Complete`
+- **hierarchy_path** — numeric tree path extracted from finding-aid references, format the `finding-aids-reference` with (root, child, grandchild,....)
+- **unit_value_inherited** — inherited Unit
+- **group_notes_inherited** — inherited Group notes
+- **series_value_inherited**, **series_notes_inherited** — inherited Series metadata
 
-It will overwrite your existing Excel file but **creates a backup** (e.g., `results.xlsx.bak`) by default.
+
+These fields make each row archivally complete, even when headings are omitted in the original finding aid.
 
 #### How to Run
 
@@ -167,17 +166,11 @@ It will overwrite your existing Excel file but **creates a backup** (e.g., `resu
     You only need to point it at the Excel file you created in Step 4.
 
     ```bash
-    python scr/postprocess_date_range.py --xlsx "output/results.xlsx"
+    python3 src/postprocess/build_hierarchy.py \
+      --input_xlsx input.xlsx \
+      --out_xlsx output_with_hierarchy.xlsx
     ```
     
-    * **To run without a backup:**
-        ```bash
-        python scr/postprocess_date_range.py --xlsx "output/results.xlsx" --no_backup
-        ```
-    * **To specify a sheet name (optional):**
-        ```bash
-        python scr/postprocess_date_range.py --xlsx "output/results.xlsx" --sheet "MySheetName"
-        ```
 
 ## Additional: 💰 Budget, Cost-Saving & Research Credits
 
