@@ -134,7 +134,7 @@ All the filed also continue with another colum `xx_confidence` display the GenAI
 
 ---
 
-# 🌲 Post-Processing Columns
+# 🌲 Post-Processing Columns  — `{final/}`
 
 These columns are produced by the hierarchy builder and inheritance modules.
 
