@@ -149,17 +149,16 @@ def write_items_xlsx(path: Path, items: List[Dict[str, Any]]) -> None:
     wb = load_workbook(path)
     ws = wb.active  # pandas writes to the first sheet by default
 
-    # For each column, compute max length of header or any cell in that column
-    for col_idx, column in enumerate(ws.iter_cols(min_row=1, max_row=ws.max_row), start=1):
-        max_len = 0
-        for cell in column:
-            if cell.value is not None:
-                val_len = len(str(cell.value))
-                if val_len > max_len:
-                    max_len = val_len
-        # small padding so text isn't flush to the edge
-        adjusted_width = max_len + 2
-        ws.column_dimensions[get_column_letter(col_idx)].width = adjusted_width
+    from openpyxl.utils import get_column_letter
+
+    # Resize based ONLY on header row (row 1)
+    for col_idx, cell in enumerate(ws[1], start=1):
+        if cell.value is not None:
+            header_len = len(str(cell.value))
+        else:
+            header_len = 0
+
+        ws.column_dimensions[get_column_letter(col_idx)].width = header_len + 2
 
     wb.save(path)
 
