@@ -14,6 +14,7 @@ from pypdf import PdfReader
 
 from .config import parse_args
 from .llm_client.gemini_client import GeminiClient
+from .llm_client.openai_client import OpenAIClient
 from .prompts.templates import PROMPT_OCR_FLAT_CONFIDENCE
 from .pdf_chunking.chunking import (
     parse_pages_arg,
@@ -35,11 +36,33 @@ def main() -> None:
     cfg = parse_args()
     started_at = datetime.utcnow()
 
-    # 1. Sanity checks
-    if cfg.engine != "gemini":
-        print(f"Engine '{cfg.engine}' is not implemented yet. Use --engine gemini.", file=sys.stderr)
+    # 1. Sanity checks (engine)
+    if cfg.engine not in ("gemini", "openai"):
+        print(
+            f"Engine '{cfg.engine}' is not implemented. "
+            f"Use --engine gemini or --engine openai.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
+    # Normalise model name for filesystem-safe tag
+    model_tag = (
+        cfg.model_name
+        .replace("/", "_")
+        .replace(":", "_")
+        .replace(".", "_")
+        .replace(" ", "_")
+        .lower()
+    )
+
+    # Add engine/model_tag to output roots so different engines/models don't collide
+    cfg.out_raw = cfg.out_raw / cfg.engine / model_tag
+    cfg.out_json = cfg.out_json / cfg.engine / model_tag
+    cfg.out_csv = cfg.out_csv / cfg.engine / model_tag
+    cfg.out_xlsx = cfg.out_xlsx / cfg.engine / model_tag
+    cfg.out_log = cfg.out_log / cfg.engine / model_tag
+
+    # 2. Sanity checks (PDF)
     if not cfg.pdf_path.exists():
         print(f"PDF not found: {cfg.pdf_path}", file=sys.stderr)
         sys.exit(1)
@@ -59,48 +82,62 @@ def main() -> None:
         f"(pages_per_chunk={cfg.pages_per_chunk})"
     )
 
-    # 2. Prepare per-PDF paths
+    # 3. Prepare per-PDF paths
     # Use stem with underscores instead of spaces to keep filenames shell-friendly
     pdf_stem = cfg.pdf_path.stem.replace(" ", "_")
 
-    # Raw dir: out_raw/<pdf_stem>/ (overwrite if exists)
+    # Raw dir: out_raw/<engine>/<model_tag>/<pdf_stem>/ (overwrite if exists)
     raw_dir = cfg.out_raw / pdf_stem
     if raw_dir.exists():
         shutil.rmtree(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    # Logs: out_log/<pdf_stem>/
+    # Logs: out_log/<engine>/<model_tag>/<pdf_stem>/
     log_dir = cfg.out_log / pdf_stem
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Flat outputs:
-    json_out = cfg.out_json / f"{pdf_stem}.json"
-    csv_out = cfg.out_csv / f"{pdf_stem}.csv"
-    xlsx_out = cfg.out_xlsx / f"{pdf_stem}.xlsx"
+    #   json:  out_json/<engine>/<model_tag>/<pdf_stem>_<model_tag>.json
+    #   csv:   out_csv/<engine>/<model_tag>/<pdf_stem>_<model_tag>.csv
+    #   xlsx:  out_xlsx/<engine>/<model_tag>/<pdf_stem>_<model_tag>.xlsx
+    json_out = cfg.out_json / f"{pdf_stem}_{model_tag}.json"
+    csv_out = cfg.out_csv / f"{pdf_stem}_{model_tag}.csv"
+    xlsx_out = cfg.out_xlsx / f"{pdf_stem}_{model_tag}.xlsx"
 
     json_out.parent.mkdir(parents=True, exist_ok=True)
     csv_out.parent.mkdir(parents=True, exist_ok=True)
     xlsx_out.parent.mkdir(parents=True, exist_ok=True)
 
-    # 3. LLM client
-    client = GeminiClient(
-        model_name=cfg.model_name,
-        temperature=cfg.temperature,
-        max_retries=cfg.max_retries,
-    )
+    # 4. LLM client
+    if cfg.engine == "gemini":
+        client = GeminiClient(
+            model_name=cfg.model_name,
+            temperature=cfg.temperature,
+            max_retries=cfg.max_retries,
+        )
+    elif cfg.engine == "openai":
+        client = OpenAIClient(
+            model_name=cfg.model_name,
+            temperature=cfg.temperature,
+            max_retries=cfg.max_retries,
+        )
+    else:
+        # This should be unreachable due to earlier sanity check
+        print(f"Unsupported engine: {cfg.engine}", file=sys.stderr)
+        sys.exit(1)
 
     combined_raw_blocks: List[str] = []
     all_items: List[dict] = []
     all_issues: List[ParseIssue] = []
 
-    # 4. Process each chunk: LLM → raw txt → parse → add page metadata
+    # 5. Process each chunk: LLM → raw txt → parse → add page metadata
     with tqdm(total=len(chunks), desc="Chunks", unit="chunk") as bar:
         for spec in chunks:
             mini_pdf = build_mini_pdf_bytes(reader, spec)
 
             try:
                 raw_text = client.generate_chunk(mini_pdf, PROMPT_OCR_FLAT_CONFIDENCE)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 raw_text = f"ERROR for pages {spec.start_page}-{spec.end_page}: {exc}"
                 print(raw_text, file=sys.stderr)
 
@@ -138,12 +175,12 @@ def main() -> None:
         "".join(combined_raw_blocks), encoding="utf-8"
     )
 
-    # 5. Write structured outputs (JSON / CSV / XLSX)
+    # 6. Write structured outputs (JSON / CSV / XLSX)
     write_items_json(json_out, all_items)
     write_items_csv(csv_out, all_items)
     write_items_xlsx(xlsx_out, all_items)
 
-    # 6. Logs: parse issues + run metadata
+    # 7. Logs: parse issues + run metadata
     issues_out = log_dir / "parse_issues.json"
     write_issues_json(issues_out, [i.to_dict() for i in all_issues])
 
@@ -157,6 +194,9 @@ def main() -> None:
 
     run_metadata = {
         "pdf_stem": pdf_stem,
+        "engine": cfg.engine,
+        "model_name": cfg.model_name,
+        "model_tag": model_tag,
         "config": cfg_dict,
         "started_at_utc": started_at.isoformat() + "Z",
         "finished_at_utc": finished_at.isoformat() + "Z",

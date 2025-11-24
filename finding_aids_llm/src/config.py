@@ -58,12 +58,16 @@ def parse_args() -> RunConfig:
         required=True,
         help="Base directory to save logs (parse_issues, run metadata).",
     )
+    # src/config.py (or src/utils/config.py in your tree)
+
     parser.add_argument(
         "--engine",
         default="gemini",
-        choices=["gemini"],
-        help="LLM engine to use. For now, only 'gemini' is implemented.",
+        choices=["gemini", "openai"],  # <-- add "openai"
+        help="LLM engine to use. 'gemini' or 'openai'.",
     )
+
+
     parser.add_argument(
         "--model_name",
         default="models/gemini-2.5-flash",
